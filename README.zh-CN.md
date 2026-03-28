@@ -76,7 +76,7 @@ MCA 把一个 Claude Code 会话变成一支模拟开发团队。不再是一个
 ## 安装
 
 ```bash
-git clone https://github.com/OscarWolf/multi-claude-agent.git
+git clone https://github.com/junyu02/multi-claude-agent.git
 cd multi-claude-agent
 chmod +x install.sh
 ./install.sh

@@ -76,7 +76,7 @@ Mode is determined automatically by the current model. Workflows degrade gracefu
 ## Installation
 
 ```bash
-git clone https://github.com/OscarWolf/multi-claude-agent.git
+git clone https://github.com/junyu02/multi-claude-agent.git
 cd multi-claude-agent
 chmod +x install.sh
 ./install.sh
