@@ -59,14 +59,14 @@ User Request
 
 | Mode | Condition | Available Personas |
 |------|-----------|-------------------|
-| **FULL** | Opus model | All 9 personas |
-| **LITE** | Sonnet model | executor, reviewer, architect, scout |
+| **FULL** | Opus + explicit `--full` | All 9 personas |
+| **LITE** | Opus/Sonnet (default) | executor, reviewer, architect, scout |
 | **SOLO** | Haiku model | executor only |
 
-Mode is determined automatically by the current model. Workflows degrade gracefully:
+Mode is determined automatically by the current model. **W1 defaults to the LITE path** even on Opus — only `--full` enables the full 9-persona pipeline. W2/W3/W4 select FULL/LITE automatically based on model. Workflows degrade gracefully:
 
-| Workflow | FULL | LITE | SOLO |
-|----------|------|------|------|
+| Workflow | FULL | LITE (default) | SOLO |
+|----------|------|----------------|------|
 | W1 Feature | pm->scout+arch->adv+devil->synth->exec->review | scout+arch->exec->review | exec |
 | W2 Review | review+adv+devil->synth | review | - |
 | W3 Architecture | scout->arch+adv+devil->wildcard?->synth->pm | arch->review | - |
@@ -181,6 +181,10 @@ When reviewing MCA's own definition files, the corresponding persona is excluded
 | mca-architect.md | architect | pm |
 
 **Limitation**: Substitutes share the same underlying model weights. Different system prompts provide role differentiation but not truly independent review.
+
+### Deterministic Wildcard Trigger
+
+The wildcard persona uses a deterministic trigger condition: the synthesizer must return `verdict: "CONSENSUS"` AND `confidence >= 0.8`. This replaces the earlier fuzzy ">= 3 personas converge" heuristic, which was ambiguous for the orchestrator to evaluate. With the deterministic check, the orchestrator simply inspects two JSON fields from the synthesizer output.
 
 ### Wildcard Resilience
 

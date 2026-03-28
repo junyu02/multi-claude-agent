@@ -6,7 +6,7 @@ Multi-persona workflow orchestration system for Claude Code. Simulates team coll
 
 | Command | Workflow | Purpose |
 |---------|----------|---------|
-| `/mca:feature` | W1 | Full feature development (pm->scout->architect->adversary->devil->synthesizer->executor->reviewer) |
+| `/mca:feature` | W1 | Feature development (defaults to LITE path, `--full` enables full 9-persona pipeline) |
 | `/mca:review` | W2 | Code review (reviewer+adversary+devil->synthesizer) |
 | `/mca:arch` | W3 | Architecture debate (multi-way debate+wildcard->synthesizer->pm) |
 | `/mca:bugfix` | W4 | Quick fix (scout->executor->reviewer) |
@@ -16,16 +16,16 @@ Multi-persona workflow orchestration system for Claude Code. Simulates team coll
 
 | Mode | Condition | Available Personas |
 |------|-----------|-------------------|
-| **FULL** | Opus | All 9 |
-| **LITE** | Sonnet | executor, reviewer, architect, scout |
+| **FULL** | Opus + explicit `--full` flag | All 9 |
+| **LITE** | Opus/Sonnet (default) | executor, reviewer, architect, scout |
 | **SOLO** | Haiku | executor only |
 
-Mode is determined by current model. Usage-based degradation is not available as Claude Code does not expose rate_limits API.
+Mode is determined by current model. **W1 defaults to the LITE path** even on Opus; only `--full` enables the full 9-persona pipeline. W2/W3/W4 select FULL/LITE automatically based on model.
 
 ## 9 Personas
 
-| Persona | Agent File | Model | Decision Priority |
-|---------|-----------|-------|-------------------|
+| Persona | Agent File | Recommended Model | Decision Priority |
+|---------|-----------|-------------------|-------------------|
 | architect | `mca-architect` | Opus | Maintainability > Performance > Speed |
 | executor | `mca-executor` | Sonnet | Correctness > Minimal Changes > Coverage |
 | reviewer | `mca-reviewer` | Opus | 7-dimension scoring |
@@ -38,12 +38,25 @@ Mode is determined by current model. Usage-based degradation is not available as
 
 ## Orchestration Rules
 
+### Model Override Rule (CRITICAL)
+
+The `model` field in agent definitions is a **preference**, not a hard constraint:
+
+- **FULL mode**: Use the agent's recommended model (e.g., architect -> opus)
+- **LITE mode**: **Omit** the `model` parameter from Agent tool calls. All agents inherit the orchestrator's current model (Sonnet/Opus). Do not pass `model` param.
+- **SOLO mode**: Executor only, inherits current model
+
+```
+# FULL: Pass recommended model
+Agent(subagent_type="mca-architect", prompt="...", model="opus")
+
+# LITE: Omit model, inherit from orchestrator
+Agent(subagent_type="mca-architect", prompt="...")
+```
+
 ### Persona Invocation
 
-**Claude personas (8)**: Use Agent tool
-```
-Agent(subagent_type="mca-architect", prompt="...", model="opus")
-```
+**Claude personas (8)**: Use Agent tool (follow Model Override Rule above)
 
 **Wildcard (DeepSeek)**: Use Bash
 ```bash
@@ -63,6 +76,36 @@ Each persona returns standard JSON (see individual agent definitions). The orche
 2. Extracting key information to assemble the next stage's prompt
 3. Presenting synthesizer's final output to the user
 
+### Synthesizer Weights
+
+**W1 Feature** (when multi-persona output is available):
+
+| Persona | Weight | Rationale |
+|---------|--------|-----------|
+| architect | 0.35 | Technical solution lead |
+| adversary | 0.25 | Security and risk gating |
+| devil | 0.20 | Logical completeness |
+| scout | 0.10 | Information foundation |
+| pm | 0.10 | Value judgment |
+
+**W2 Review**:
+
+| Persona | Weight | Rationale |
+|---------|--------|-----------|
+| reviewer | 0.40 | Quality scoring lead |
+| adversary | 0.35 | Security vulnerabilities prioritized |
+| devil | 0.25 | Design premise validation |
+
+**W3 Architecture**:
+
+| Persona | Weight | Rationale |
+|---------|--------|-----------|
+| architect | 0.35 | Technical solution lead |
+| adversary | 0.25 | Security and risk cannot be ignored |
+| devil | 0.20 | Logical completeness assurance |
+| scout | 0.10 | Information foundation |
+| wildcard | 0.10 | Diversity value |
+
 ### Timeouts
 
 | Model | Timeout |
@@ -80,12 +123,16 @@ Each persona returns standard JSON (see individual agent definitions). The orche
 
 ### Wildcard Trigger
 
-- Condition: >= 3 Claude personas converge on the same topic
+**Deterministic trigger condition** (replaces the previous fuzzy ">= 3 converge" check):
+- Synthesizer returns `verdict: "CONSENSUS"` **AND** `confidence >= 0.8`
+- i.e., wildcard challenge is only triggered when synthesizer confirms strong consensus
 - Maximum 2 triggers per session
-- Cooldown: After wildcard output, synthesizer must incorporate it
+- After wildcard output, synthesizer must re-synthesize (incorporating wildcard)
 - **Failure handling**: Script timeout/API error/non-zero exit -> Skip wildcard, continue with existing outputs. Do not block workflow.
 
 ### Self-Review Avoidance (CRITICAL)
+
+#### Single-File Review
 
 When the review target includes an MCA persona's own definition file, that persona **must be excluded** from the review pipeline:
 
@@ -97,19 +144,27 @@ When the review target includes an MCA persona's own definition file, that perso
 | mca-architect.md | architect | pm |
 | mca-executor.md | executor | reviewer |
 
-**Limitation note**: Substitute personas share the same underlying model weights as original personas. Different system prompts provide role differentiation but not truly independent review. For significant changes to the MCA system itself, human confirmation is recommended.
+#### Multi-File Review
+
+When changes involve **2 or more** mca-*.md files, the substitution chain may become circular. In this case:
+- **Do not rely on persona substitution**
+- **Force human confirmation**: Present the change diff to the user, tagged with `[MCA System Self-Change — Requires Human Review]`
+
+#### Limitation Note
+
+Substitute personas share the same underlying model weights as original personas. Different system prompts provide role differentiation but not truly independent review. **For ANY changes to the MCA system itself, human confirmation is always recommended.**
 
 ## Mode Degradation
 
-When mode is not FULL, workflows automatically degrade:
-
-| Workflow | FULL | LITE | SOLO |
-|----------|------|------|------|
+| Workflow | FULL | LITE (default) | SOLO |
+|----------|------|----------------|------|
 | W1 Feature | pm->scout+arch->adv+devil->synth->exec->review | scout+arch->exec->review | exec |
 | W2 Review | review+adv+devil->synth | review | - |
 | W3 Architecture | scout->arch+adv+devil->wildcard?->synth->pm | arch->review | - |
 | W4 Bugfix | scout->exec->review | exec->review | exec |
 | W5 Quick | exec | exec | exec |
+
+**W1 note**: Even on Opus, W1 defaults to the LITE path. Only `/mca:feature --full` enables the full 9-persona pipeline. Other workflows (W2-W5) select FULL/LITE automatically based on model.
 
 SOLO mode supports W1 (exec only), W4, and W5.
 
@@ -123,6 +178,7 @@ Classifier: `~/.claude/hooks/mca-classifier.js`
 ### Manual Trigger
 
 User directly inputs `/mca:<workflow>`.
+W1 supports appending `--full` to enable the full pipeline.
 
 ### Event-Driven
 
@@ -134,7 +190,7 @@ User directly inputs `/mca:<workflow>`.
 After orchestration completes, present to user:
 
 ```markdown
-## MCA Results [W1-Feature] [FULL]
+## MCA Results [W1-Feature] [LITE]
 
 ### Consensus
 - ...

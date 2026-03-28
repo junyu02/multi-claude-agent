@@ -17,6 +17,8 @@ Determine mode based on current model: Opus -> FULL, Sonnet -> LITE, Haiku -> SO
 - **LITE** -> architect + reviewer (simplified)
 - **SOLO** -> W3 not supported
 
+**Model override**: FULL mode passes recommended model, LITE mode omits `model` param (inherits from orchestrator).
+
 ## Step 1: Intelligence Gathering
 
 Launch `mca-scout` (haiku):
@@ -34,25 +36,26 @@ Using scout's intelligence as shared context, **launch 4 agents in parallel:**
 
 Wait for all to complete.
 
-## Step 3: Consensus Detection + Wildcard
+## Step 3: Initial Synthesis
 
-Analyze multi-way outputs:
-- Extract core viewpoints from all personas
-- Check if >= 3 personas converge
+Launch `mca-synthesizer` (model="opus"):
+- Input: All persona outputs
+- Weights (W3): architect 0.35, adversary 0.25, devil 0.20, scout 0.10, wildcard 0.10
+- Output: Consensus, disagreements, weighted recommendations
 
-**If converging**: Call `~/.claude/scripts/mca-wildcard.js`
-- Input: The converging consensus + the topic
+## Step 4: Wildcard Challenge (Conditional)
+
+**Deterministic trigger condition**:
+- Synthesizer returns `verdict: "CONSENSUS"` **AND** `confidence >= 0.8`
+- i.e., wildcard challenge is only triggered when synthesizer confirms strong consensus
+
+**If triggered**: Call `~/.claude/scripts/mca-wildcard.js`
+- Input: The consensus content + the topic
 - Get DeepSeek's counter-consensus perspective
-- **If script fails** (timeout/API error/non-zero exit) -> Skip wildcard, continue with existing outputs
+- **If script fails** (timeout/API error/non-zero exit) -> Skip, continue with initial synthesis results
+- If successful -> `mca-synthesizer` re-synthesizes (incorporating wildcard output)
 
-**If not converging**: Skip wildcard
-
-## Step 4: Synthesis
-
-Launch `mca-synthesizer` (opus):
-- Input: All persona outputs (including wildcard if available)
-- Weights: architect 0.35, adversary 0.25, devil 0.20, scout 0.10, wildcard 0.10
-- Output: Consensus, disagreements, weighted recommendations, user decision points
+**If not triggered**: Continue with Step 3 results
 
 ## Step 5: PM Evaluation (FULL only)
 

@@ -59,14 +59,14 @@ MCA 把一个 Claude Code 会话变成一支模拟开发团队。不再是一个
 
 | 模式 | 条件 | 可用 Persona |
 |------|------|-------------|
-| **FULL** | Opus 模型 | 全部 9 个 |
-| **LITE** | Sonnet 模型 | executor, reviewer, architect, scout |
+| **FULL** | Opus + 显式 `--full` | 全部 9 个 |
+| **LITE** | Opus/Sonnet（默认） | executor, reviewer, architect, scout |
 | **SOLO** | Haiku 模型 | 仅 executor |
 
-模式根据当前模型自动判断。工作流优雅降级：
+模式根据当前模型自动判断。**W1 即使在 Opus 上也默认走 LITE 路径**——只有 `--full` 才启用完整 9-persona 流水线。W2/W3/W4 按模型自动选择 FULL/LITE。工作流优雅降级：
 
-| 工作流 | FULL | LITE | SOLO |
-|--------|------|------|------|
+| 工作流 | FULL | LITE（默认） | SOLO |
+|--------|------|-------------|------|
 | W1 Feature | pm->scout+arch->adv+devil->synth->exec->review | scout+arch->exec->review | exec |
 | W2 Review | review+adv+devil->synth | review | - |
 | W3 Architecture | scout->arch+adv+devil->wildcard?->synth->pm | arch->review | - |
@@ -181,6 +181,10 @@ MCA 根据上下文自动建议工作流：
 | mca-architect.md | architect | pm |
 
 **局限性**：替代者与原 persona 共享底层模型权重。不同的系统提示提供角色差异，但非真正独立审查。
+
+### 确定性 Wildcard 触发
+
+Wildcard persona 使用确定性触发条件：synthesizer 必须返回 `verdict: "CONSENSUS"` 且 `confidence >= 0.8`。这取代了之前模糊的"≥3 个 persona 趋同"启发式规则——该规则编排器难以准确评估。确定性检查下，编排器只需检查 synthesizer 输出的两个 JSON 字段即可。
 
 ### Wildcard 容错
 

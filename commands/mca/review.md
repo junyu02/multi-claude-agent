@@ -43,6 +43,7 @@ Launch `mca-synthesizer` (opus) with structured input:
   "devil": <devil's JSON output>
 }
 ```
+- Weights (W2): reviewer 0.40, adversary 0.35, devil 0.25
 - Integrate 3 review reports
 - Output: Consensus issues, disagreements, priority ranking
 
